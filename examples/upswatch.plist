@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- upswatch as a launch daemon (root). Install it in /Library/LaunchDaemons;
+     its arguments are its settings (upswatch --help): add --shutdown-hook
+     for other machines on the UPS, and --dry-run to try it first. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>upswatch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/upswatch</string>
+    <string>--on-battery-max</string>
+    <string>300</string>
+    <string>--state-file</string>
+    <string>/var/run/upswatch.json</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/var/log/upswatch.log</string>
+  <key>StandardErrorPath</key>
+  <string>/var/log/upswatch.log</string>
+</dict>
+</plist>
