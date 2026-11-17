@@ -34,6 +34,7 @@ UPS is on battery and:
 - the UPS says its battery is low;
 - it has been on battery for `--on-battery-max` seconds;
 - the battery is at or under `--min-battery-volts`;
+- its estimated charge is at or under `--min-charge` (below);
 - or the UPS has stopped answering for `--lost-max` seconds (60 by default).
   The last one is for a UPS that drops off USB once on battery: it was last
   seen on battery, and will not be able to say its battery is low.
@@ -43,6 +44,30 @@ for them (up to `--hook-timeout`, 30 s): that is how one Mac on the USB cable
 shuts down others on the same UPS, over ssh. Each `--event-hook` runs on every
 event (`onbattery`, `online`, `lowbattery`, `lost`, `found`, `shutdown`),
 without waiting, for notifications.
+
+## How charged is the battery
+
+These UPSes report the battery's voltage, not its charge, so upswatch
+estimates it, and only on battery: on line power the charger holds the
+battery at its float voltage (13.5-13.8 V for 12 V) whatever its charge.
+
+On battery, the voltage reads low under load, by the current times the
+battery's internal resistance (and its wiring's). With `--ups-watts` (the
+UPS's rating in watts, not VA), upswatch adds that sag back, from the load the
+UPS reports, before it looks the voltage up in a sealed lead-acid (VRLA / AGM)
+battery's resting voltage curve, the kind nearly every small UPS uses. The
+readings come in 0.1 V steps, so it averages them over about ten seconds.
+
+It is a guide, good to perhaps ten or fifteen points: a battery reads high
+for the first minute off the charger, and low just after a load step, and an
+old battery has more resistance and less capacity than its voltage says. For
+the shutdown itself, the UPS's own low-battery flag and a time limit on
+battery (`--on-battery-max`) are the ones to rely on. Another chemistry, or
+a better curve for yours: `--battery-curve 10.5:0,...,12.73:100` (volts per
+12 V at rest, and percent).
+
+The estimate is in the log, the state file (`charge_percent`) and the hooks'
+`UPSWATCH_CHARGE`.
 
 ## Install
 

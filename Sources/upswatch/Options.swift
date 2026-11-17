@@ -14,6 +14,7 @@ It shuts down when, on battery:
   - the UPS says its battery is low;
   - it has been on battery for --on-battery-max seconds;
   - the battery voltage is at or under --min-battery-volts;
+  - the estimated charge is at or under --min-charge;
   - the UPS has not answered for --lost-max seconds.
 
 UPS:
@@ -26,7 +27,18 @@ UPS:
 When to shut down:
   --on-battery-max SECONDS   0 for no limit (default 0)
   --min-battery-volts VOLTS  0 for none (default 0)
+  --min-charge PERCENT       0 for none (default 0)
   --lost-max SECONDS         0 to never shut down for it (default 60)
+
+The battery (the charge is estimated on battery only, from its voltage):
+  --ups-watts WATTS          the UPS's rating in watts, to correct the
+                             voltage for the sag under load (default 0: none)
+  --battery-ohms OHMS        its internal resistance and wiring's, per 12 V
+                             (default 0.05)
+  --battery-nominal VOLTS    12, 24, ..., or 2 for per-cell readings
+                             (default: from the first reading)
+  --battery-curve V:%,...    resting voltage per 12 V at each charge (default
+                             sealed lead-acid: 10.5:0,11.51:10,...,12.73:100)
 
 What to run:
   --shutdown-hook CMD     run with /bin/sh before shutting down, e.g. to shut
@@ -35,7 +47,8 @@ What to run:
   --event-hook CMD        run with /bin/sh on each event, not waited for;
                           repeatable. UPSWATCH_EVENT is online, onbattery,
                           lowbattery, lost, found or shutdown, UPSWATCH_MESSAGE
-                          says what happened, UPSWATCH_STATUS is the last reading
+                          says what happened, UPSWATCH_STATUS is the last reading,
+                          UPSWATCH_CHARGE the estimated charge (on battery)
   --hook-timeout SECONDS  (default 30)
   --shutdown-command CMD  (default "/sbin/shutdown -h now")
   --dry-run               log the shutdown, run the hooks with
@@ -57,6 +70,8 @@ struct Options {
     var onBatteryMax = 0.0
     var minBatteryVolts = 0.0
     var lostMax = 60.0
+    var minCharge = 0.0
+    var battery = BatteryModel()
     var shutdownHooks = [String]()
     var eventHooks = [String]()
     var hookTimeout = 30.0
@@ -95,6 +110,14 @@ struct Options {
             case "--on-battery-max": onBatteryMax = try number(a)
             case "--min-battery-volts": minBatteryVolts = try number(a)
             case "--lost-max": lostMax = try number(a)
+            case "--min-charge": minCharge = try number(a)
+            case "--ups-watts": battery.upsWatts = try number(a)
+            case "--battery-ohms": battery.ohms = try number(a)
+            case "--battery-nominal": battery.nominal = try number(a)
+            case "--battery-curve":
+                let v = try value(a)
+                guard let c = BatteryModel.parseCurve(v) else { throw OptionError("\(a): not V:%,V:%,...: \(v)") }
+                battery.curve = c
             case "--shutdown-hook": shutdownHooks.append(try value(a))
             case "--event-hook": eventHooks.append(try value(a))
             case "--hook-timeout": hookTimeout = try number(a)

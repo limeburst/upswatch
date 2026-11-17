@@ -13,10 +13,13 @@ final class Watcher {
     private var lastLogged = ""
     private var lastLoggedAt = Date.distantPast
     private var shutdownStarted = false
+    private var battery: BatteryModel
+    private var charge: Double?
 
     init(_ o: Options) {
         self.o = o
         link = HIDLink(vendorID: o.vendorID, productID: o.productID)
+        battery = o.battery
     }
 
     func start() {
@@ -29,6 +32,7 @@ final class Watcher {
         var settings = ["query \(o.query) every \(o.interval)s"]
         if o.onBatteryMax > 0 { settings.append("on-battery max \(Int(o.onBatteryMax))s") }
         if o.minBatteryVolts > 0 { settings.append("min battery \(o.minBatteryVolts)V") }
+        if o.minCharge > 0 { settings.append("min charge \(Int(o.minCharge))%") }
         if o.lostMax > 0 { settings.append("lost max \(Int(o.lostMax))s") }
         settings.append("\(o.shutdownHooks.count) shutdown hook(s)")
         if o.dryRun { settings.append("DRY RUN") }
@@ -52,6 +56,8 @@ final class Watcher {
             shutdown("the UPS says its battery is low")
         } else if o.minBatteryVolts > 0, s.batteryVolts <= o.minBatteryVolts {
             shutdown(String(format: "battery at %.1fV", s.batteryVolts))
+        } else if o.minCharge > 0, let c = charge, c <= o.minCharge {
+            shutdown(String(format: "battery at about %.0f%%", c))
         } else if o.onBatteryMax > 0, let since = onBatterySince,
                   now.timeIntervalSince(since) >= o.onBatteryMax {
             shutdown("on battery for \(Int(now.timeIntervalSince(since)))s")
@@ -66,28 +72,34 @@ final class Watcher {
         lastContact = now
         if lost {
             lost = false
-            event("found", "the UPS answers again: \(s.summary)", s)
+            event("found", "the UPS answers again: \(describe(s))", s)
         }
         let before = last
         last = s
+        charge = battery.update(s, interval: o.interval)
         if s.onBattery, before?.onBattery != true {
             onBatterySince = now
-            event("onbattery", "on battery: \(s.summary)", s)
+            event("onbattery", "on battery: \(describe(s))", s)
         } else if !s.onBattery, before?.onBattery == true {
             onBatterySince = nil
-            event("online", "back on line power: \(s.summary)", s)
+            event("online", "back on line power: \(describe(s))", s)
             if shutdownStarted, o.dryRun { shutdownStarted = false }
         }
         if s.batteryLow, before?.batteryLow != true {
-            event("lowbattery", "battery low: \(s.summary)", s)
+            event("lowbattery", "battery low: \(describe(s))", s)
         }
 
         let words = s.words.joined(separator: " ")
         if words != lastLogged || now.timeIntervalSince(lastLoggedAt) >= o.heartbeat {
-            log(s.summary)
+            log(describe(s))
             lastLogged = words; lastLoggedAt = now
         }
         writeState(s)
+    }
+
+    private func describe(_ s: Status) -> String {
+        guard s.onBattery, let c = charge else { return s.summary }
+        return s.summary + String(format: " charge=%.0f%%", c)
     }
 
     private func event(_ name: String, _ message: String, _ s: Status? = nil) {
@@ -121,7 +133,8 @@ final class Watcher {
 
     private func env(_ event: String, _ message: String, _ s: Status?) -> [String: String] {
         var e = ["UPSWATCH_EVENT": event, "UPSWATCH_MESSAGE": message]
-        if let s { e["UPSWATCH_STATUS"] = s.summary }
+        if let s { e["UPSWATCH_STATUS"] = describe(s) }
+        if let charge { e["UPSWATCH_CHARGE"] = String(format: "%.0f", charge) }
         if o.dryRun { e["UPSWATCH_DRY_RUN"] = "1" }
         return e
     }
@@ -129,6 +142,7 @@ final class Watcher {
     private func writeState(_ s: Status) {
         guard let path = o.stateFile else { return }
         var j = s.json
+        if let c = charge { j["charge_percent"] = Int(c.rounded()) }
         j["time"] = ISO8601DateFormatter().string(from: Date())
         if let since = onBatterySince { j["on_battery_since"] = ISO8601DateFormatter().string(from: since) }
         guard let data = try? JSONSerialization.data(withJSONObject: j, options: [.sortedKeys]) else { return }
