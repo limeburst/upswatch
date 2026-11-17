@@ -69,6 +69,15 @@ a better curve for yours: `--battery-curve 10.5:0,...,12.73:100` (volts per
 The estimate is in the log, the state file (`charge_percent`) and the hooks'
 `UPSWATCH_CHARGE`.
 
+## The state file
+
+With `--state-file`, upswatch rewrites it every interval, as JSON: the last
+reading (`status`, the voltages, `load_percent`, `charge_percent` and
+`on_battery_since` on battery, as of `time`), and whether the UPS is on USB
+(`usb_attached`) and answering (`answering`) now. The file's own age says
+whether upswatch is running. Unplugging the UPS's USB is `lost` at once: an
+event, and `usb_attached: false`.
+
 ## Install
 
 With Homebrew (it builds from source, with the Command Line Tools):

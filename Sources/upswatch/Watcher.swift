@@ -25,7 +25,7 @@ final class Watcher {
     func start() {
         link.onReply = { [unowned self] in reply($0) }
         link.onAttach = { log("UPS attached") }
-        link.onDetach = { log("UPS detached") }
+        link.onDetach = { [unowned self] in detached() }
         link.onError = { log("UPS: \($0)") }
         let r = link.start()
         if r != kIOReturnSuccess { log("HID manager: \(hex(r))") }
@@ -44,6 +44,7 @@ final class Watcher {
     private func tick() {
         if link.attached { link.query(o.query, timeout: o.timeout) }
         let now = Date()
+        defer { writeState() }
 
         let silentFor = now.timeIntervalSince(lastContact ?? now)
         if !lost, lastContact != nil, silentFor >= max(o.timeout, o.interval) * 2 + 1 {
@@ -64,6 +65,16 @@ final class Watcher {
         } else if o.lostMax > 0, lost, silentFor >= o.lostMax {
             shutdown("no answer from the UPS for \(Int(silentFor))s, last seen on battery")
         }
+    }
+
+    /// Off USB: unplugged, or its USB bridge dropped off the bus. Lost at
+    /// once, rather than after the replies it no longer gives time out.
+    private func detached() {
+        log("UPS detached")
+        guard !lost, lastContact != nil else { return }
+        lost = true
+        event("lost", "the UPS is off USB: unplugged, or its USB bridge dropped off the bus")
+        writeState()
     }
 
     private func reply(_ line: String) {
@@ -94,7 +105,7 @@ final class Watcher {
             log(describe(s))
             lastLogged = words; lastLoggedAt = now
         }
-        writeState(s)
+        writeState()
     }
 
     private func describe(_ s: Status) -> String {
@@ -139,12 +150,18 @@ final class Watcher {
         return e
     }
 
-    private func writeState(_ s: Status) {
+    /// The state file, written every interval: the last reading (as of
+    /// "time"), and whether the UPS is on USB and answering now. Its own age
+    /// says whether upswatch is running.
+    private func writeState() {
         guard let path = o.stateFile else { return }
-        var j = s.json
+        let iso = ISO8601DateFormatter()
+        var j: [String: Any] = last?.json ?? [:]
+        j["usb_attached"] = link.attached
+        j["answering"] = lastContact != nil && !lost
+        if let t = lastContact { j["time"] = iso.string(from: t) }
         if let c = charge { j["charge_percent"] = Int(c.rounded()) }
-        j["time"] = ISO8601DateFormatter().string(from: Date())
-        if let since = onBatterySince { j["on_battery_since"] = ISO8601DateFormatter().string(from: since) }
+        if let since = onBatterySince { j["on_battery_since"] = iso.string(from: since) }
         guard let data = try? JSONSerialization.data(withJSONObject: j, options: [.sortedKeys]) else { return }
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }

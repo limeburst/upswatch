@@ -1,6 +1,6 @@
 import Foundation
 
-let version = "0.1.0"
+let version = "0.2.0"
 
 let usage = """
 usage: upswatch [options]
@@ -55,7 +55,9 @@ What to run:
                           UPSWATCH_DRY_RUN=1, and do not shut down
 
 Other:
-  --state-file PATH       keep the last reading there, as JSON
+  --state-file PATH       keep the state there, as JSON, rewritten every
+                          interval: the last reading (as of "time"),
+                          usb_attached and answering
   --heartbeat SECONDS     log the reading at least this often (default 300)
   --once                  print one reading as JSON and exit (1 when none)
   --version, --help
