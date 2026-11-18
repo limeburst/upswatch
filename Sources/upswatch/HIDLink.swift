@@ -72,6 +72,25 @@ final class HIDLink {
         return true
     }
 
+    /// Sends a command that has no reply (a shutdown, say), between queries.
+    @discardableResult
+    func send(_ command: String) -> Bool {
+        guard let dev = device else { return false }
+        let bytes = Array((command + "\r").utf8)
+        var i = 0
+        while i < bytes.count {
+            var chunk = [UInt8](repeating: 0, count: 8)
+            for j in 0..<min(8, bytes.count - i) { chunk[j] = bytes[i + j] }
+            let r = IOHIDDeviceSetReport(dev, kIOHIDReportTypeOutput, 0, chunk, 8)
+            if r != kIOReturnSuccess { onError("send failed: \(hex(r))"); return false }
+            i += 8
+        }
+        return true
+    }
+
+    /// Takes whatever the UPS says next as a reply, without asking.
+    func listen() { sentAt = Date(); reply = [] }
+
     private func attach(_ dev: IOHIDDevice) {
         let r = IOHIDDeviceOpen(dev, IOOptionBits(kIOHIDOptionsTypeNone))
         guard r == kIOReturnSuccess else { onError("open failed: \(hex(r))"); return }

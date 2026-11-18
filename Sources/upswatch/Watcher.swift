@@ -35,6 +35,7 @@ final class Watcher {
         if o.minCharge > 0 { settings.append("min charge \(Int(o.minCharge))%") }
         if o.lostMax > 0 { settings.append("lost max \(Int(o.lostMax))s") }
         settings.append("\(o.shutdownHooks.count) shutdown hook(s)")
+        if o.upsOffDelay > 0 { settings.append("then UPS off after \(o.upsOffDelay) min, on \(o.upsRestore) min after") }
         if o.dryRun { settings.append("DRY RUN") }
         log(String(format: "upswatch %@ watching %04x:%04x: %@", version, o.vendorID, o.productID,
                    settings.joined(separator: ", ")))
@@ -133,6 +134,7 @@ final class Watcher {
                 run(hook, env: env, timeout: o.hookTimeout) { _ in group.leave() }
             }
             group.wait()
+            if o.upsOffDelay > 0 { self.switchOff() }
             if o.dryRun {
                 log("dry run: would run \(o.shutdownCommand)")
             } else {
@@ -140,6 +142,31 @@ final class Watcher {
                 run(o.shutdownCommand, env: env) { _ in }
             }
         }
+    }
+
+    /// Tells the UPS to switch its outlets off (and on again later), and
+    /// waits a few seconds for it to say so (its "shutdown active" bit). On
+    /// a background queue, while the link lives on the main one.
+    private func switchOff() {
+        let command = "S\(megatecDelay(o.upsOffDelay)!)R\(String(format: "%04d", o.upsRestore))"
+        if o.dryRun {
+            log("dry run: would tell the UPS \(command)")
+            return
+        }
+        let sent = DispatchQueue.main.sync { link.send(command) }
+        guard sent else {
+            log("could not tell the UPS \(command): it is not on USB; its outlets stay on")
+            return
+        }
+        log("told the UPS \(command): outlets off in \(o.upsOffDelay) min, on again \(o.upsRestore) min after that with line power")
+        for _ in 0..<5 {
+            Thread.sleep(forTimeInterval: 1)
+            if DispatchQueue.main.sync(execute: { last?.shuttingDown == true }) {
+                log("the UPS confirms (SD)")
+                return
+            }
+        }
+        log("the UPS has not confirmed (no SD) in 5s")
     }
 
     private func env(_ event: String, _ message: String, _ s: Status?) -> [String: String] {

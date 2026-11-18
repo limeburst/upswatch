@@ -23,6 +23,24 @@ do {
     exit(2)
 }
 
+if let command = options.send {
+    let link = HIDLink(vendorID: options.vendorID, productID: options.productID)
+    var replied = false
+    link.onReply = { line in print(line); replied = true; exit(0) }
+    link.onAttach = {
+        guard link.send(command) else { exit(1) }
+        print("sent \(command)")
+        // Some commands answer; most do not.
+        link.listen()
+    }
+    _ = link.start()
+    DispatchQueue.main.asyncAfter(deadline: .now() + options.timeout + 2) {
+        if !replied { print("(no reply)") }
+        exit(link.attached ? 0 : 1)
+    }
+    CFRunLoopRun()
+}
+
 if options.once {
     let link = HIDLink(vendorID: options.vendorID, productID: options.productID)
     link.onReply = { line in

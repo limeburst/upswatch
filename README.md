@@ -165,10 +165,24 @@ upswatch --help
   behind a USB hub. On the Macs we tried, a port behind a hub (a Mac mini's
   front ports are behind an internal one) kept the bridge on the bus where a
   port straight on the controller lost it every time.
-- **Coming back.** Once the Macs have shut down, the UPS keeps its outlets on
-  until its battery is flat, so when line power returns first, the Macs stay
-  off. Turn on *Start up automatically after a power failure*
-  (`sudo pmset autorestart 1`) for when the battery does run flat.
+- **Coming back.** "Start up automatically after a power failure"
+  (`sudo pmset autorestart 1`) only starts a Mac when its power comes back
+  after being lost. Once the Macs have shut down, the UPS's battery has
+  almost nothing to power, so line power usually comes back before it runs
+  flat, the outlets never go dead, and the Macs stay off. With
+  `--ups-off-delay`, the last thing upswatch does before the Mac shuts down
+  is tell the UPS (Megatec `S<n>R<m>`) to switch its outlets off that many
+  minutes later, long enough for every Mac on it to have shut down, and
+  back on `--ups-restore` minutes after that once line power is there; the
+  Macs then start by themselves. If line power came back meanwhile, the
+  outlets still go off and on again, so the Macs start then too.
+  `upswatch --send C` cancels it (stop the daemon first).
+
+  How a UPS takes `R<m>` varies: some turn their outlets back on after `m`
+  minutes only with line power, some regardless. Try it before you rely on
+  it, with the Macs on the UPS and nothing that minds losing power: if yours
+  turns its outlets on while still on battery, the Macs start, run on
+  battery and shut down again until the battery is flat.
 - Only one program can talk to the UPS at a time: stop NUT, or anything else
   polling it, first.
 
