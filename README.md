@@ -61,8 +61,9 @@ readings come in 0.1 V steps, so it averages them over about ten seconds.
 It is a guide, good to perhaps ten or fifteen points: a battery reads high
 for the first minute off the charger, and low just after a load step, and an
 old battery has more resistance and less capacity than its voltage says. For
-the shutdown itself, the UPS's own low-battery flag and a time limit on
-battery (`--on-battery-max`) are the ones to rely on. Another chemistry, or
+the shutdown itself, a time limit on battery (`--on-battery-max`) is the one
+to rely on, and the UPS's own low-battery flag where it has one: not every UPS
+sets it (below). Another chemistry, or
 a better curve for yours: `--battery-curve 10.5:0,...,12.73:100` (volts per
 12 V at rest, and percent).
 
@@ -216,6 +217,16 @@ upswatch --help
   it, with the Macs on the UPS and nothing that minds losing power: if yours
   turns its outlets on while still on battery, the Macs start, run on
   battery and shut down again until the battery is flat.
+- **The low-battery flag.** Not every UPS sets it. A Delta Agilon VX-600VA
+  (VX600, 12 V 7 Ah, on the `0665:5161` bridge, `QS`) never did in a
+  discharge to empty: about two hours at 26 W with its battery-low status bit
+  never set, until it cut its outlets with the battery reading 11.7 V, and the
+  Macs on it lost power. With a UPS like that, the flag is no
+  safety net: set `--min-charge`, `--min-battery-volts` or `--on-battery-max`
+  as well, and find out how yours ends a discharge before you trust it with
+  less. (On that one, with a general AGM curve, `--battery-curve
+  11.80:0,12.00:25,12.30:50,12.60:75,12.85:100`, an estimate of 30% left
+  about 20 minutes at that load.)
 - Only one program can talk to the UPS at a time: stop NUT, or anything else
   polling it, first.
 
