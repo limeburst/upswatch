@@ -66,6 +66,7 @@ struct Status: Equatable {
             "battery_volts": d(batteryVolts),
         ]
         if let t = temperature { j["temperature"] = d(t) }
+        j["beeper"] = beeper
         return j
     }
 }

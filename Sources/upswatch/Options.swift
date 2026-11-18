@@ -1,6 +1,6 @@
 import Foundation
 
-let version = "0.3.0"
+let version = "0.4.0"
 
 let usage = """
 usage: upswatch [options]
@@ -67,6 +67,11 @@ The UPS's outlets, after a shutdown:
                              default 1)
 
 Other:
+  --settings PATH         reread when it changes: when to shut down, and
+                          whether for real, as JSON (README: Settings),
+                          over what these options say
+  --control-dir PATH      run the actions asked for there: a file each,
+                          holding beeper, test or cancel (README: Actions)
   --state-file PATH       keep the state there, as JSON, rewritten every
                           interval: the last reading (as of "time"),
                           usb_attached and answering
@@ -100,6 +105,8 @@ struct Options {
     var upsOffDelay = 0.0
     var upsRestore = 1
     var send: String?
+    var settingsFile: String?
+    var controlDir: String?
 
     init(_ args: [String]) throws {
         var it = args.makeIterator()
@@ -147,6 +154,8 @@ struct Options {
             case "--heartbeat": heartbeat = try number(a)
             case "--once": once = true
             case "--send": send = try value(a)
+            case "--settings": settingsFile = try value(a)
+            case "--control-dir": controlDir = try value(a)
             case "--ups-off-delay":
                 upsOffDelay = try number(a)
                 guard upsOffDelay == 0 || megatecDelay(upsOffDelay) != nil else {

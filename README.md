@@ -74,7 +74,8 @@ The estimate is in the log, the state file (`charge_percent`) and the hooks'
 With `--state-file`, upswatch rewrites it every interval, as JSON: the last
 reading (`status`, the voltages, `load_percent`, `charge_percent` and
 `on_battery_since` on battery, as of `time`), and whether the UPS is on USB
-(`usb_attached`) and answering (`answering`) now. The file's own age says
+(`usb_attached`) and answering (`answering`) now, with the settings in
+effect (`settings`). The file's own age says
 whether upswatch is running. Unplugging the UPS's USB is `lost` at once: an
 event, and `usb_attached: false`.
 
@@ -151,6 +152,38 @@ The hooks get `UPSWATCH_EVENT`, `UPSWATCH_MESSAGE` and `UPSWATCH_STATUS`:
 ```
 --event-hook 'curl -fsS -H "Content-Type: application/json" -d "{\"content\": \"$UPSWATCH_MESSAGE\"}" "$(cat /etc/upswatch-webhook)"'
 ```
+
+## Settings
+
+`--settings PATH` names a JSON file upswatch rereads whenever it changes,
+over what its options say: when to shut down, and whether for real.
+
+```json
+{"on_battery_max": 180, "min_charge": 40, "min_battery_volts": 0,
+ "lost_max": 30, "dry_run": false, "ups_off_delay": 0, "ups_restore": 1}
+```
+
+A key left out keeps its option's value; a file that does not parse, or a
+value out of range, is logged and changes nothing; removing the file goes
+back to the options. It holds numbers and switches only, never a command:
+the hooks stay in the launch daemon's own, root-owned plist. So it may be
+writable by someone other than root -- a dashboard, say -- who can then
+change when the Mac shuts down, or stop it (`dry_run`), but not make root
+run anything.
+
+## Actions
+
+`--control-dir PATH` names a directory where each file is a request: one
+action's name, which upswatch runs within a second and then removes.
+
+| action | what the UPS does |
+|---|---|
+| `beeper` | turns its beeper on or off (Megatec `Q`) |
+| `test` | a 10-second battery test: it runs on battery meanwhile (`T`) |
+| `cancel` | cancels a shutdown of its outlets it was told of (`C`) |
+
+Anything else is refused. The state file says how the last one went
+(`last_action`), and its `beeper` whether the beeper is on.
 
 ## Options
 

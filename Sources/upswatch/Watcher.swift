@@ -3,7 +3,10 @@ import Foundation
 /// Decides, from what the UPS says (and how long it has said nothing), when
 /// to shut down, and runs the hooks.
 final class Watcher {
-    let o: Options
+    private(set) var o: Options
+    private let base: Options
+    private var settingsStamp: Date?
+    private var lastAction: [String: Any]?
     let link: HIDLink
 
     private var last: Status?
@@ -18,6 +21,7 @@ final class Watcher {
 
     init(_ o: Options) {
         self.o = o
+        base = o
         link = HIDLink(vendorID: o.vendorID, productID: o.productID)
         battery = o.battery
     }
@@ -29,16 +33,10 @@ final class Watcher {
         link.onError = { log("UPS: \($0)") }
         let r = link.start()
         if r != kIOReturnSuccess { log("HID manager: \(hex(r))") }
-        var settings = ["query \(o.query) every \(o.interval)s"]
-        if o.onBatteryMax > 0 { settings.append("on-battery max \(Int(o.onBatteryMax))s") }
-        if o.minBatteryVolts > 0 { settings.append("min battery \(o.minBatteryVolts)V") }
-        if o.minCharge > 0 { settings.append("min charge \(Int(o.minCharge))%") }
-        if o.lostMax > 0 { settings.append("lost max \(Int(o.lostMax))s") }
-        settings.append("\(o.shutdownHooks.count) shutdown hook(s)")
-        if o.upsOffDelay > 0 { settings.append("then UPS off after \(o.upsOffDelay) min, on \(o.upsRestore) min after") }
-        if o.dryRun { settings.append("DRY RUN") }
-        log(String(format: "upswatch %@ watching %04x:%04x: %@", version, o.vendorID, o.productID,
-                   settings.joined(separator: ", ")))
+        readSettings()
+        log(String(format: "upswatch %@ watching %04x:%04x: query %@ every %.1fs, %@, %d shutdown hook(s)",
+                   version, o.vendorID, o.productID, o.query, o.interval,
+                   SettingsFile.describe(o), o.shutdownHooks.count))
         Timer.scheduledTimer(withTimeInterval: o.interval, repeats: true) { [unowned self] _ in tick() }
     }
 
@@ -46,6 +44,8 @@ final class Watcher {
         if link.attached { link.query(o.query, timeout: o.timeout) }
         let now = Date()
         defer { writeState() }
+        if !shutdownStarted { readSettings() }
+        runActions()
 
         let silentFor = now.timeIntervalSince(lastContact ?? now)
         if !lost, lastContact != nil, silentFor >= max(o.timeout, o.interval) * 2 + 1 {
@@ -91,7 +91,7 @@ final class Watcher {
         charge = battery.update(s, interval: o.interval)
         if s.onBattery, before?.onBattery != true {
             onBatterySince = now
-            event("onbattery", "on battery: \(describe(s))", s)
+            event("onbattery", (s.testing ? "on battery for a battery test: " : "on battery: ") + describe(s), s)
         } else if !s.onBattery, before?.onBattery == true {
             onBatterySince = nil
             event("online", "back on line power: \(describe(s))", s)
@@ -134,7 +134,7 @@ final class Watcher {
                 run(hook, env: env, timeout: o.hookTimeout) { _ in group.leave() }
             }
             group.wait()
-            if o.upsOffDelay > 0 { self.switchOff() }
+            if o.upsOffDelay > 0 { self.switchOff(o) }
             if o.dryRun {
                 log("dry run: would run \(o.shutdownCommand)")
             } else {
@@ -147,7 +147,7 @@ final class Watcher {
     /// Tells the UPS to switch its outlets off (and on again later), and
     /// waits a few seconds for it to say so (its "shutdown active" bit). On
     /// a background queue, while the link lives on the main one.
-    private func switchOff() {
+    private func switchOff(_ o: Options) {
         let command = "S\(megatecDelay(o.upsOffDelay)!)R\(String(format: "%04d", o.upsRestore))"
         if o.dryRun {
             log("dry run: would tell the UPS \(command)")
@@ -167,6 +167,51 @@ final class Watcher {
             }
         }
         log("the UPS has not confirmed (no SD) in 5s")
+    }
+
+    /// The settings file, applied over the command line's options when it
+    /// has changed since it was last read.
+    private func readSettings() {
+        guard let path = o.settingsFile else { return }
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        guard stamp != settingsStamp else { return }
+        settingsStamp = stamp
+        guard stamp != nil, let data = FileManager.default.contents(atPath: path) else {
+            if SettingsFile.describe(o) != SettingsFile.describe(base) {
+                o = base
+                log("settings: \(path) is gone; back to the command line's: \(SettingsFile.describe(o))")
+            }
+            return
+        }
+        switch SettingsFile.apply(data, to: base) {
+        case .failure(let e):
+            log("settings: \(path): \(e); keeping \(SettingsFile.describe(o))")
+        case .success(let new):
+            let before = SettingsFile.describe(o)
+            o = new
+            if SettingsFile.describe(o) != before { log("settings: \(SettingsFile.describe(o))") }
+        }
+    }
+
+    /// Each request in the control directory, oldest first.
+    private func runActions() {
+        guard let dir = o.controlDir,
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+        for name in names.sorted() where !name.hasPrefix(".") {
+            let path = (dir as NSString).appendingPathComponent(name)
+            let text = FileManager.default.contents(atPath: path).map { String(decoding: $0, as: UTF8.self) } ?? ""
+            try? FileManager.default.removeItem(atPath: path)
+            let asked = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result: String
+            if let action = Action(rawValue: asked) {
+                result = link.send(action.command) ? "sent \(action.command)" : "the UPS is not on USB"
+            } else {
+                result = "unknown action (beeper, test or cancel)"
+            }
+            log("action \(asked.prefix(40)): \(result)")
+            lastAction = ["action": String(asked.prefix(40)), "result": result,
+                          "time": ISO8601DateFormatter().string(from: Date())]
+        }
     }
 
     private func env(_ event: String, _ message: String, _ s: Status?) -> [String: String] {
@@ -189,6 +234,8 @@ final class Watcher {
         if let t = lastContact { j["time"] = iso.string(from: t) }
         if let c = charge { j["charge_percent"] = Int(c.rounded()) }
         if let since = onBatterySince { j["on_battery_since"] = iso.string(from: since) }
+        j["settings"] = SettingsFile.json(o)
+        if let a = lastAction { j["last_action"] = a }
         guard let data = try? JSONSerialization.data(withJSONObject: j, options: [.sortedKeys]) else { return }
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
