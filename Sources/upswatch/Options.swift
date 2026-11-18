@@ -1,6 +1,6 @@
 import Foundation
 
-let version = "0.4.0"
+let version = "0.4.1"
 
 let usage = """
 usage: upswatch [options]
