@@ -23,9 +23,13 @@ enum SettingsFile {
             return .failure(OptionError("unknown setting \(unknown)"))
         }
         var o = base
+        // JSONSerialization gives numbers and true/false alike as NSNumber,
+        // and Swift lets an NSNumber of 0 or 1 pass `is Bool`: only
+        // CFBoolean's type tells a JSON true/false from a number.
+        func isBool(_ v: Any) -> Bool { CFGetTypeID(v as CFTypeRef) == CFBooleanGetTypeID() }
         func number(_ key: String, _ range: ClosedRange<Double>) throws -> Double? {
             guard let v = j[key] else { return nil }
-            guard let n = (v as? NSNumber)?.doubleValue, !(v is Bool), range.contains(n) else {
+            guard let n = (v as? NSNumber)?.doubleValue, !isBool(v), range.contains(n) else {
                 throw OptionError("\(key): not a number from \(range.lowerBound) to \(range.upperBound)")
             }
             return n
@@ -43,7 +47,7 @@ enum SettingsFile {
             }
             if let n = try number("ups_restore", 1...9999) { o.upsRestore = Int(n) }
             if let v = j["dry_run"] {
-                guard let b = v as? Bool else { throw OptionError("dry_run: true or false") }
+                guard isBool(v), let b = v as? Bool else { throw OptionError("dry_run: true or false") }
                 o.dryRun = b
             }
         } catch let e as OptionError {
