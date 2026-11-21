@@ -48,7 +48,10 @@ final class Watcher {
         runActions()
 
         let silentFor = now.timeIntervalSince(lastContact ?? now)
-        if !lost, lastContact != nil, silentFor >= max(o.timeout, o.interval) * 2 + 1 {
+        // Not a reply or two missed: a USB send can time out now and then
+        // (the VX600's bridge does a few times an hour), and the gap passes
+        // a few seconds; --lost-after is how long a silence has to be.
+        if !lost, lastContact != nil, silentFor >= max(o.lostAfter, max(o.timeout, o.interval) * 2 + 1) {
             lost = true
             event("lost", "no answer from the UPS for \(Int(silentFor))s")
         }
@@ -63,7 +66,7 @@ final class Watcher {
         } else if o.onBatteryMax > 0, let since = onBatterySince,
                   now.timeIntervalSince(since) >= o.onBatteryMax {
             shutdown("on battery for \(Int(now.timeIntervalSince(since)))s")
-        } else if o.lostMax > 0, lost, silentFor >= o.lostMax {
+        } else if o.lostMax > 0, lastContact != nil, silentFor >= o.lostMax {
             shutdown("no answer from the UPS for \(Int(silentFor))s, last seen on battery")
         }
     }
@@ -231,6 +234,7 @@ final class Watcher {
         var j: [String: Any] = last?.json ?? [:]
         j["usb_attached"] = link.attached
         j["answering"] = lastContact != nil && !lost
+            && Date().timeIntervalSince(lastContact!) < max(o.timeout, o.interval) * 2 + 1
         if let t = lastContact { j["time"] = iso.string(from: t) }
         if let c = charge { j["charge_percent"] = Int(c.rounded()) }
         if let since = onBatterySince { j["on_battery_since"] = iso.string(from: since) }

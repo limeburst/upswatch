@@ -39,6 +39,13 @@ UPS is on battery and:
   The last one is for a UPS that drops off USB once on battery: it was last
   seen on battery, and will not be able to say its battery is low.
 
+The UPS is `lost` (an event) once it has said nothing for `--lost-after`
+seconds (30 by default), or at once when it drops off USB; `found` when it
+answers again. A shorter silence is not an event: the USB bridges these
+UPSes use time out on a query now and then (a VX600's does a few times an
+hour), and the next reply can take several seconds. `--lost-max` counts
+from the last reply either way.
+
 Before it shuts down it runs each `--shutdown-hook`, all at once, and waits
 for them (up to `--hook-timeout`, 30 s): that is how one Mac on the USB cable
 shuts down others on the same UPS, over ssh. Each `--event-hook` runs on every

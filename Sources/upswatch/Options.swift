@@ -1,6 +1,6 @@
 import Foundation
 
-let version = "0.4.1"
+let version = "0.4.2"
 
 let usage = """
 usage: upswatch [options]
@@ -23,6 +23,8 @@ UPS:
   --query CMD             status query: QS or Q1 (default QS)
   --interval SECONDS      between queries (default 1)
   --timeout SECONDS       for a reply (default 3)
+  --lost-after SECONDS    silence before the UPS is lost, an event (default
+                          30; at least two timeouts); off USB is lost at once
 
 When to shut down:
   --on-battery-max SECONDS   0 for no limit (default 0)
@@ -89,6 +91,7 @@ struct Options {
     var query = "QS"
     var interval = 1.0
     var timeout = 3.0
+    var lostAfter = 30.0
     var onBatteryMax = 0.0
     var minBatteryVolts = 0.0
     var lostMax = 60.0
@@ -134,6 +137,7 @@ struct Options {
             case "--query": query = try value(a)
             case "--interval": interval = max(0.2, try number(a))
             case "--timeout": timeout = max(0.5, try number(a))
+            case "--lost-after": lostAfter = try number(a)
             case "--on-battery-max": onBatteryMax = try number(a)
             case "--min-battery-volts": minBatteryVolts = try number(a)
             case "--lost-max": lostMax = try number(a)
