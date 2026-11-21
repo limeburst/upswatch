@@ -1,8 +1,8 @@
 class Upswatch < Formula
   desc "Shut a Mac down when its Megatec / Voltronic USB UPS runs out of time"
   homepage "https://github.com/limeburst/upswatch"
-  url "https://github.com/limeburst/upswatch/archive/refs/tags/v0.4.1.tar.gz"
-  sha256 "7e23b78fc52f7948fe64c165a0da41f88c65bb91d434736e5dd65ce87c88f871"
+  url "https://github.com/limeburst/upswatch/archive/refs/tags/v0.4.2.tar.gz"
+  sha256 "6100cfcf90388a111bda556326c9c81961dac2b267b200790681cf050559c203"
   license "MIT"
   head "https://github.com/limeburst/upswatch.git", branch: "main"
 
